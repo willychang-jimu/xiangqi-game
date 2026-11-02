@@ -1,0 +1,1160 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="楚河棋室：中國象棋人機對弈，五級電腦、落子無悔、棋譜紀錄與覆盤分析。">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>楚河棋室</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: the wooden board is the hero on the left, a narrow control rail on the right; the post-game review (curve + key moments) and the game archive run full width beneath. */
+:root{
+  --bg:#e4e9e3; --surface:#f3f5f0; --surface-2:#eaeee8; --line:#c6cfc6; --fg:#1b2420; --muted:#58665e;
+  --accent:#1d6b5a; --accent-fg:#ffffff; --accent-soft:#d3e6df;
+  --wood:#ddb877; --wood-2:#c99c56; --ink:#4b2d12; --frame:#7a4f24;
+  --disc:#f7ecd4; --disc-edge:#a27a45; --pc-red:#b3261e; --pc-blk:#1c201e; --shadow:rgba(40,24,8,.38);
+  --last:#2a7fb8; --best:#1f8a5b; --played:#d0461a;
+  --good:#2f7d4f; --dub:#b07a12; --mis:#d0461a; --bla:#b3261e;
+  --f-display:"LXGW WenKai TC","KaiTi","STKaiti","BiauKai",serif;
+  --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111614; --surface:#1a201d; --surface-2:#212824; --line:#2f3934; --fg:#e3e8e2; --muted:#98a69d;
+  --accent:#4bb398; --accent-fg:#0d1512; --accent-soft:#1f3a32;
+  --wood:#a67c45; --wood-2:#8c6535; --ink:#2a1706; --frame:#4d3014;
+  --disc:#f1e4c8; --disc-edge:#7a5428; --shadow:rgba(0,0,0,.55);
+  --last:#5fb0e6; --best:#3fbf84; --played:#f07a45;
+  --good:#5cbf86; --dub:#e0a93a; --mis:#f07a45; --bla:#f0645a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111614; --surface:#1a201d; --surface-2:#212824; --line:#2f3934; --fg:#e3e8e2; --muted:#98a69d;
+  --accent:#4bb398; --accent-fg:#0d1512; --accent-soft:#1f3a32;
+  --wood:#a67c45; --wood-2:#8c6535; --ink:#2a1706; --frame:#4d3014;
+  --disc:#f1e4c8; --disc-edge:#7a5428; --shadow:rgba(0,0,0,.55);
+  --last:#5fb0e6; --best:#3fbf84; --played:#f07a45;
+  --good:#5cbf86; --dub:#e0a93a; --mis:#f07a45; --bla:#f0645a; color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,.mv:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{cursor:not-allowed;opacity:.5}
+
+.top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;border-bottom:1px solid var(--line);padding-bottom:14px}
+.top h1{font-family:var(--f-display);font-weight:700;font-size:clamp(28px,4vw,38px);margin:0;letter-spacing:.08em;line-height:1.1}
+.top h1 small{font-size:.5em;color:var(--muted);letter-spacing:.04em;margin-left:.6em;font-weight:400}
+.rule{margin:0;color:var(--muted);font-size:14px}
+.rule b{color:var(--fg);font-family:var(--f-display);font-size:16px;letter-spacing:.1em}
+
+.layout{display:grid;grid-template-columns:minmax(0,600px) minmax(0,1fr);gap:28px;align-items:start}
+@media (max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}}
+.board-col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.turnbar{display:flex;align-items:center;gap:10px;min-height:40px;padding:8px 14px;border-radius:10px;background:var(--surface);border:1px solid var(--line);font-weight:500}
+.turnbar .dot{width:12px;height:12px;border-radius:50%;flex:none;background:var(--muted)}
+.turnbar .dot.r{background:var(--pc-red)} .turnbar .dot.b{background:var(--pc-blk);box-shadow:0 0 0 1px var(--muted)}
+.turnbar .spin{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;flex:none}
+.turnbar .end{margin-left:auto;color:var(--muted);font-weight:400;font-size:13px}
+.turnbar.win{border-color:var(--good)} .turnbar.lose{border-color:var(--bla)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+#board{width:100%;max-width:600px;height:auto;display:block;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.bd-frame{fill:var(--frame)} .bd-wood{fill:var(--wood)}
+.bd-line{stroke:var(--ink);stroke-width:1.6;fill:none;stroke-linecap:square}
+.bd-edge{stroke:var(--ink);stroke-width:3.2;fill:none}
+.bd-mark{stroke:var(--ink);stroke-width:1.4;fill:none}
+.bd-river{fill:var(--ink);font-family:var(--f-display);font-size:34px;letter-spacing:.3em;opacity:.78;dominant-baseline:central;text-anchor:middle}
+.bd-file{fill:var(--disc);font-family:var(--f-display);font-size:16px;text-anchor:middle;dominant-baseline:central;opacity:.85}
+.pc{cursor:default}
+.pc.mine{cursor:pointer}
+.pc .lift{filter:drop-shadow(0 2.5px 1.5px var(--shadow))}
+.pc .disc{fill:var(--disc);stroke:var(--disc-edge);stroke-width:2.2}
+.pc .ring{fill:none;stroke-width:1.5}
+.pc.r .ring{stroke:var(--pc-red)} .pc.b .ring{stroke:var(--pc-blk)}
+.pc text{font-family:var(--f-display);font-size:31px;font-weight:700;text-anchor:middle;dominant-baseline:central}
+.pc.r text{fill:var(--pc-red)} .pc.b text{fill:var(--pc-blk)}
+.pc.sel .disc{stroke:var(--accent);stroke-width:4.5}
+.pc.last .disc{stroke:var(--last);stroke-width:3.5}
+.pc.chk .disc{stroke:var(--bla);stroke-width:5;animation:pulse 1s ease-in-out infinite}
+.pc.drop .lift{animation:drop .28s ease-out;transform-box:fill-box;transform-origin:center}
+@keyframes pulse{50%{stroke-width:2}}
+@keyframes drop{from{transform:scale(1.18)}to{transform:scale(1)}}
+.tg-dot{fill:var(--accent);opacity:.9}
+.tg-cap{fill:none;stroke:var(--accent);stroke-width:3.5;stroke-dasharray:7 5}
+.lastfrom{fill:none;stroke:var(--last);stroke-width:2.5;stroke-dasharray:4 4}
+.arrow{stroke-width:7;stroke-linecap:round;opacity:.82;fill:none}
+.arrow.best{stroke:var(--best)} .arrow.played{stroke:var(--played)}
+.ah-best{fill:var(--best)} .ah-played{fill:var(--played)}
+#board{overflow:visible}
+#g-anim,#g-fx{pointer-events:none}
+.fx-shadow{fill:var(--shadow)}
+.fx-flash{fill:var(--disc)}
+.fx-ring{fill:none;stroke:var(--played)}
+.fx-spark{fill:var(--played)} .fx-spark2{fill:var(--dub)}
+.fx-dust{fill:var(--disc-edge)}
+.fx-aura{fill:none;stroke:var(--dub);stroke-width:3}
+
+.reviewbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--line)}
+.reviewbar .txt{flex:1 1 220px;min-width:0;font-size:14px}
+.reviewbar .txt .k{font-family:var(--f-display);font-size:17px}
+.legend{display:inline-flex;align-items:center;gap:5px;margin-right:10px;color:var(--muted);font-size:13px;white-space:nowrap}
+.legend i{display:inline-block;width:16px;height:4px;border-radius:2px}
+
+.rail{display:flex;flex-direction:column;gap:20px;min-width:0}
+.label{font-size:12px;letter-spacing:.12em;color:var(--muted);font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.label .sp{flex:1}
+.levels{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.lv{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 2px 6px;display:flex;flex-direction:column;align-items:center;gap:0;line-height:1.2}
+.lv .n{font-family:var(--f-display);font-size:22px;font-weight:700}
+.lv .t{font-size:12px;color:var(--muted)}
+.lv[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.lv[aria-pressed="true"] .t{color:var(--accent-fg)}
+.lvdesc{margin:8px 0 0;font-size:13px;color:var(--muted);min-height:2.6em}
+.lock{font-size:12px;color:var(--dub);margin:6px 0 0}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.seg button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px;display:flex;align-items:center;justify-content:center;gap:8px}
+.seg button[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:var(--accent-soft)}
+.chip{width:22px;height:22px;border-radius:50%;background:var(--disc);border:1.5px solid var(--disc-edge);display:inline-grid;place-items:center;font-family:var(--f-display);font-weight:700;font-size:13px;line-height:1}
+.chip.r{color:var(--pc-red)} .chip.b{color:var(--pc-blk)}
+.actions{display:grid;grid-template-columns:1fr auto;gap:8px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 16px;font-weight:500}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.danger.armed{background:var(--bla);border-color:var(--bla);color:#fff}
+.seg button b{font-weight:700;min-width:1.2em}
+.seg button[aria-pressed="false"]{color:var(--muted)}
+.vol{display:flex;align-items:center;gap:10px;margin:10px 0 6px;font-size:13px;color:var(--muted)}
+.vol input{flex:1;min-width:0;accent-color:var(--accent)}
+.voln{font-family:var(--f-mono);font-variant-numeric:tabular-nums;min-width:2.2em;text-align:right}
+.link{border:0;background:none;padding:0;color:var(--accent);font-size:12px;letter-spacing:0;font-weight:500}
+.moves{list-style:none;margin:0;padding:6px;border:1px solid var(--line);border-radius:10px;background:var(--surface);max-height:340px;overflow-y:auto;display:grid;grid-template-columns:2.4em 1fr 1fr;gap:2px 4px;align-content:start;min-height:120px}
+.moves li{display:contents}
+.moves .no{color:var(--muted);font-family:var(--f-mono);font-size:12px;padding:4px 0 0 4px;font-variant-numeric:tabular-nums}
+.mv{border:0;background:none;text-align:left;padding:3px 6px;border-radius:6px;font-family:var(--f-display);font-size:16px;display:flex;align-items:center;gap:6px;min-width:0}
+.mv.r{color:var(--pc-red)} .mv.b{color:var(--fg)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .mv.r{color:var(--bla)}}
+:root[data-theme="dark"] .mv.r{color:var(--bla)}
+.mv.click:hover{background:var(--surface-2)}
+.mv.on{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.mv:not(.click){cursor:default}
+.sev{font-family:var(--f-mono);font-size:11px;padding:0 5px;border-radius:4px;line-height:1.5;color:#fff}
+.sev.dub{background:var(--dub)} .sev.mis{background:var(--mis)} .sev.bla{background:var(--bla)}
+.empty-moves{grid-column:1/-1;color:var(--muted);font-size:13px;padding:8px}
+.note{font-size:13px;color:var(--muted);margin:0}
+
+section.panel{border-top:1px solid var(--line);padding-top:20px;display:flex;flex-direction:column;gap:16px}
+section.panel h2{font-family:var(--f-display);font-size:24px;margin:0;letter-spacing:.06em;text-wrap:balance}
+.ph{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px}
+.ph .sub{color:var(--muted);font-size:13px}
+.summary{font-size:16px;max-width:68ch;margin:0}
+.summary strong{font-family:var(--f-display);font-size:18px}
+.stats{display:flex;flex-wrap:wrap;gap:8px}
+.stat{display:flex;align-items:baseline;gap:8px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:13px}
+.stat b{font-family:var(--f-mono);font-size:15px;font-variant-numeric:tabular-nums}
+.stat.good b{color:var(--good)} .stat.dub b{color:var(--dub)} .stat.mis b{color:var(--mis)} .stat.bla b{color:var(--bla)}
+.chartbox{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:8px}
+#chart{width:100%;min-width:520px;height:auto;display:block}
+.ax{fill:var(--muted);font-family:var(--f-mono);font-size:11px}
+.grid{stroke:var(--line);stroke-width:1}
+.zero{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3}
+.curve{fill:none;stroke:var(--fg);stroke-width:2}
+.a-up{fill:var(--good);opacity:.22} .a-dn{fill:var(--bla);opacity:.22}
+.mk{cursor:pointer;stroke:var(--surface);stroke-width:2}
+.mk.dub{fill:var(--dub)} .mk.mis{fill:var(--mis)} .mk.bla{fill:var(--bla)}
+.cursor{stroke:var(--accent);stroke-width:1.5}
+.moments{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.moment{border:1px solid var(--line);border-left:4px solid var(--mis);background:var(--surface);border-radius:10px;padding:10px 14px;text-align:left;display:flex;flex-direction:column;gap:4px}
+.moment.bla{border-left-color:var(--bla)} .moment.dub{border-left-color:var(--dub)}
+.moment.first{box-shadow:0 0 0 2px var(--bla)}
+.moment .h{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.moment .mvname{font-family:var(--f-display);font-size:20px;color:var(--fg)}
+.moment p{margin:0;font-size:13px}
+.progress{height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden;max-width:420px}
+.progress i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
+.placeholder{color:var(--muted);max-width:68ch;margin:0}
+
+.hist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.hrow{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:10px 14px;border-top:1px solid var(--line)}
+.hrow:first-child{border-top:0}
+.hrow .d{font-family:var(--f-mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.res{font-weight:700}.res.w{color:var(--good)}.res.l{color:var(--bla)}.res.d{color:var(--muted)}
+.hrow.on{background:var(--accent-soft)}
+@media (max-width:560px){.hrow{grid-template-columns:1fr auto}.hrow .x2{display:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>楚河棋室<small>中國象棋 · 人機對弈</small></h1>
+    <p class="rule"><b>落子無悔</b>　走出的每一步都會記入棋譜，無法收回。終局後自動覆盤，指出從哪一步開始出問題。</p>
+  </header>
+
+  <div class="layout">
+    <div class="board-col">
+      <div class="turnbar" id="turnbar"></div>
+      <svg id="board" viewBox="0 0 600 696" aria-label="象棋棋盤">
+        <defs>
+          <marker id="ah-best" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3.2" markerHeight="3.2" orient="auto-start-reverse"><path class="ah-best" d="M0 0L10 5L0 10z"/></marker>
+          <marker id="ah-played" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3.2" markerHeight="3.2" orient="auto-start-reverse"><path class="ah-played" d="M0 0L10 5L0 10z"/></marker>
+        </defs>
+        <g id="g-static"></g>
+        <g id="g-marks"></g>
+        <g id="g-pieces"></g>
+        <g id="g-over"></g>
+        <g id="g-anim"></g>
+        <g id="g-fx"></g>
+      </svg>
+      <div class="reviewbar" id="reviewbar" hidden>
+        <button class="btn" id="rv-prev" aria-label="上一手">◀</button>
+        <div class="txt" id="rv-txt"></div>
+        <button class="btn" id="rv-next" aria-label="下一手">▶</button>
+        <button class="btn" id="rv-end">終局</button>
+      </div>
+    </div>
+
+    <aside class="rail">
+      <div>
+        <div class="label">電腦等級</div>
+        <div class="levels" id="levels"></div>
+        <p class="lvdesc" id="lvdesc"></p>
+      </div>
+      <div>
+        <div class="label">執子</div>
+        <div class="seg" id="sidesel">
+          <button data-side="0" id="side-r"><span class="chip r">帥</span>執紅先走</button>
+          <button data-side="1" id="side-b"><span class="chip b">將</span>執黑後走</button>
+        </div>
+        <p class="lock" id="lock" hidden>你已走出第一步，等級與執子已鎖定。下完或認輸後才能更換。</p>
+      </div>
+      <div>
+        <div class="label">聲音</div>
+        <div class="seg">
+          <button id="snd-sfx" aria-pressed="true">音效　<b>開</b></button>
+          <button id="snd-music" aria-pressed="true">配樂　<b>開</b></button>
+        </div>
+        <div class="vol"><label for="snd-vol">音量</label><input type="range" id="snd-vol" min="0" max="100" step="5"><span id="snd-vol-n" class="voln"></span></div>
+        <p class="note">瀏覽器規定要先點一下頁面才能出聲，配樂會在你第一次點擊後開始。</p>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="newbtn">開始新對局</button>
+        <button class="btn danger" id="resignbtn">認輸</button>
+      </div>
+      <div>
+        <div class="label">棋譜<span id="movecount"></span><span class="sp"></span><button class="link" id="copybtn">複製棋譜</button></div>
+        <ol class="moves" id="moves"></ol>
+      </div>
+      <p class="note">對局中的棋譜只能看、不能點回去重下。終局後點任何一手，可在棋盤上看到當時的局面與建議著法。</p>
+    </aside>
+  </div>
+
+  <section class="panel" id="analysis">
+    <div class="ph"><h2>覆盤分析</h2><span class="sub" id="an-sub"></span></div>
+    <div id="an-body"></div>
+  </section>
+
+  <section class="panel">
+    <div class="ph"><h2>對局紀錄</h2><span class="sub">保存在這台裝置的瀏覽器中，最近 30 局</span></div>
+    <div id="history"></div>
+  </section>
+</div>
+
+<script>
+/* ================= Engine (runs in main thread for rules, and in a Web Worker for thinking) ================= */
+function ENGINE(){
+  const K=1,A=2,B=3,N=4,R=5,C=6,P=7,MATE=100000,INF=1000000000;
+  const VAL=[0,0,120,120,270,600,285,30];
+  const ORD=[0,9000,120,120,270,600,285,60];
+  const PST=[],PSTB=[];
+  for(let t=0;t<8;t++){PST.push(new Int16Array(90));PSTB.push(new Int16Array(90));}
+  const pawnRow=[15,55,65,60,45,6,0,0,0,0];
+  const knRow=[-4,6,12,14,12,10,6,2,0,-8];
+  const rkRow=[6,8,6,10,12,10,4,2,0,-4];
+  const cnRow=[6,4,2,0,0,0,2,4,2,0];
+  for(let r=0;r<10;r++)for(let c=0;c<9;c++){
+    const i=r*9+c,cd=Math.abs(c-4);
+    PST[P][i]=r<=4?pawnRow[r]-cd*5:pawnRow[r];
+    PST[N][i]=knRow[r]+(4-cd)*3-(cd===4?8:0);
+    PST[R][i]=rkRow[r]+(cd===0?-4:0)+(cd===1?2:0);
+    PST[C][i]=cnRow[r]+(c===4?12:0)-(cd===4?4:0);
+    PST[A][i]=(r===8&&c===4)?6:0;
+    PST[B][i]=(r===7&&c===4)?6:((r===9&&(c===2||c===6))?2:0);
+    PST[K][i]=(r===9?0:r===8?-10:-20)-(c===4?0:6);
+  }
+  for(let t=0;t<8;t++)for(let r=0;r<10;r++)for(let c=0;c<9;c++)PSTB[t][r*9+c]=PST[t][(9-r)*9+c];
+
+  const INIT=(()=>{const b=new Array(90).fill(0),back=[R,N,B,A,K,A,B,N,R];
+    for(let c=0;c<9;c++){b[c]=8|back[c];b[81+c]=back[c];}
+    b[19]=8|C;b[25]=8|C;b[64]=C;b[70]=C;
+    for(const c of [0,2,4,6,8]){b[27+c]=8|P;b[54+c]=P;}
+    return b;})();
+
+  // Zobrist hashing
+  let seed=0x2545F491;
+  const rnd=()=>{seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;return seed|0;};
+  const Z1=new Int32Array(16*90),Z2=new Int32Array(16*90);
+  for(let i=0;i<Z1.length;i++){Z1[i]=rnd();Z2[i]=rnd();}
+  const ZS1=rnd(),ZS2=rnd();
+  let h1=0,h2=0;
+  function hashBoard(b,side){h1=0;h2=0;for(let i=0;i<90;i++){const p=b[i];if(p){h1^=Z1[p*90+i];h2^=Z2[p*90+i];}}if(side){h1^=ZS1;h2^=ZS2;}}
+  function make(b,m){const f=m&127,t=m>>7,p=b[f],q=b[t];
+    h1^=Z1[p*90+f]^Z1[p*90+t]^ZS1;h2^=Z2[p*90+f]^Z2[p*90+t]^ZS2;
+    if(q){h1^=Z1[q*90+t];h2^=Z2[q*90+t];}
+    b[t]=p;b[f]=0;return q;}
+  function unmake(b,m,q){const f=m&127,t=m>>7,p=b[t];b[f]=p;b[t]=q;
+    h1^=Z1[p*90+f]^Z1[p*90+t]^ZS1;h2^=Z2[p*90+f]^Z2[p*90+t]^ZS2;
+    if(q){h1^=Z1[q*90+t];h2^=Z2[q*90+t];}}
+
+  const ORTH=[[-1,0],[1,0],[0,-1],[0,1]],DIAG=[[-1,-1],[-1,1],[1,-1],[1,1]];
+  const KN=[[-2,-1,-1,0],[-2,1,-1,0],[2,-1,1,0],[2,1,1,0],[-1,-2,0,-1],[1,-2,0,-1],[-1,2,0,1],[1,2,0,1]];
+  const inPal=(r,c,s)=>c>=3&&c<=5&&(s?r<=2:r>=7)&&r>=0&&r<=9;
+  function add(mv,b,f,t,side,caps){const q=b[t];if(q){if(((q>>3)&1)!==side)mv.push(f|t<<7);}else if(!caps)mv.push(f|t<<7);}
+  function gen(b,side,caps){
+    const mv=[];
+    for(let i=0;i<90;i++){
+      const p=b[i];if(!p||((p>>3)&1)!==side)continue;
+      const t=p&7,r=(i/9)|0,c=i-r*9;
+      switch(t){
+        case K:for(const[dr,dc]of ORTH){const nr=r+dr,nc=c+dc;if(inPal(nr,nc,side))add(mv,b,i,nr*9+nc,side,caps);}break;
+        case A:for(const[dr,dc]of DIAG){const nr=r+dr,nc=c+dc;if(inPal(nr,nc,side))add(mv,b,i,nr*9+nc,side,caps);}break;
+        case B:for(const[dr,dc]of DIAG){const nr=r+2*dr,nc=c+2*dc;
+          if(nr<0||nr>9||nc<0||nc>8)continue;if(side?nr>4:nr<5)continue;
+          if(b[(r+dr)*9+c+dc])continue;add(mv,b,i,nr*9+nc,side,caps);}break;
+        case N:for(const[dr,dc,lr,lc]of KN){const nr=r+dr,nc=c+dc;
+          if(nr<0||nr>9||nc<0||nc>8)continue;if(b[(r+lr)*9+c+lc])continue;add(mv,b,i,nr*9+nc,side,caps);}break;
+        case R:for(const[dr,dc]of ORTH){let nr=r+dr,nc=c+dc;
+          while(nr>=0&&nr<=9&&nc>=0&&nc<=8){const t2=nr*9+nc;if(b[t2]){add(mv,b,i,t2,side,caps);break;}if(!caps)mv.push(i|t2<<7);nr+=dr;nc+=dc;}}break;
+        case C:for(const[dr,dc]of ORTH){let nr=r+dr,nc=c+dc,jumped=false;
+          while(nr>=0&&nr<=9&&nc>=0&&nc<=8){const t2=nr*9+nc;
+            if(!jumped){if(b[t2])jumped=true;else if(!caps)mv.push(i|t2<<7);}
+            else if(b[t2]){if(((b[t2]>>3)&1)!==side)mv.push(i|t2<<7);break;}
+            nr+=dr;nc+=dc;}}break;
+        case P:{const fw=side?1:-1,nr=r+fw;if(nr>=0&&nr<=9)add(mv,b,i,nr*9+c,side,caps);
+          if(side?r>=5:r<=4){if(c>0)add(mv,b,i,i-1,side,caps);if(c<8)add(mv,b,i,i+1,side,caps);}}break;
+      }
+    }
+    return mv;
+  }
+  function findKing(b,side){const kp=side?9:1,r0=side?0:7;for(let r=r0;r<r0+3;r++)for(let c=3;c<=5;c++)if(b[r*9+c]===kp)return r*9+c;return -1;}
+  function inCheck(b,side){
+    const k=findKing(b,side);if(k<0)return true;
+    const kr=(k/9)|0,kc=k%9,en=side?0:8;
+    for(const[dr,dc]of ORTH){let r=kr+dr,c=kc+dc,found=false;
+      while(r>=0&&r<=9&&c>=0&&c<=8){const p=b[r*9+c];
+        if(p){if(!found){if((p&8)===en&&((p&7)===R||((p&7)===K&&dc===0)))return true;found=true;}
+          else{if((p&8)===en&&(p&7)===C)return true;break;}}
+        r+=dr;c+=dc;}}
+    for(const[dr,dc]of[[-2,-1],[-2,1],[2,-1],[2,1],[-1,-2],[1,-2],[-1,2],[1,2]]){
+      const r=kr+dr,c=kc+dc;if(r<0||r>9||c<0||c>8)continue;
+      if(b[r*9+c]===(en|N)&&!b[(kr+Math.sign(dr))*9+kc+Math.sign(dc)])return true;}
+    const pf=side?1:-1;
+    if(b[(kr+pf)*9+kc]===(en|P)||b[k-1]===(en|P)||b[k+1]===(en|P))return true;
+    return false;
+  }
+  function legalMoves(b,side){const ms=gen(b,side,false),res=[];
+    for(const m of ms){const q=make(b,m);if(!inCheck(b,side))res.push(m);unmake(b,m,q);}return res;}
+  function evaluate(b,side){let s=0;
+    for(let i=0;i<90;i++){const p=b[i];if(!p)continue;const t=p&7;
+      if(p&8)s-=VAL[t]+PSTB[t][i];else s+=VAL[t]+PST[t][i];}
+    return side?-s:s;}
+
+  // search
+  const TTS=1<<19,TTM=TTS-1;
+  const ttK=new Int32Array(TTS),ttD=new Int8Array(TTS),ttF=new Int8Array(TTS),ttV=new Int32Array(TTS),ttMv=new Int32Array(TTS);
+  const hist=new Int32Array(8100),killers=new Int32Array(256);
+  let nodes=0,stopAt=0,stopped=false;
+  function order(b,ms,ttMove,ply){
+    const n=ms.length,sc=new Float64Array(n);
+    for(let i=0;i<n;i++){const m=ms[i];let s;
+      if(m===ttMove)s=1e8;
+      else{const q=b[m>>7];
+        if(q)s=1e7+ORD[q&7]*10-ORD[b[m&127]&7]/10;
+        else if(m===killers[ply*2])s=9e6;else if(m===killers[ply*2+1])s=8e6;
+        else s=hist[(m&127)*90+(m>>7)];}
+      sc[i]=s;}
+    const idx=Array.from({length:n},(_,i)=>i).sort((x,y)=>sc[y]-sc[x]);
+    return idx.map(i=>ms[i]);
+  }
+  function tick(){if((++nodes&1023)===0&&Date.now()>stopAt)stopped=true;}
+  function qs(b,side,alpha,beta,ply,qd){
+    tick();if(stopped)return 0;
+    const stand=evaluate(b,side);
+    if(stand>=beta)return stand;
+    if(stand>alpha)alpha=stand;
+    if(qd>7)return stand;
+    const ms=order(b,gen(b,side,true),0,Math.min(ply,120));
+    for(const m of ms){const q=make(b,m);
+      if(inCheck(b,side)){unmake(b,m,q);continue;}
+      const v=-qs(b,side^1,-beta,-alpha,ply+1,qd+1);unmake(b,m,q);
+      if(stopped)return 0;
+      if(v>=beta)return v;if(v>alpha)alpha=v;}
+    return alpha;
+  }
+  function search(b,side,depth,alpha,beta,ply){
+    tick();if(stopped)return 0;
+    const chk=inCheck(b,side);
+    if(chk&&ply<24)depth++;
+    if(depth<=0)return qs(b,side,alpha,beta,ply,0);
+    const idx=h1&TTM;let ttMove=0;
+    if(ttK[idx]===h2){ttMove=ttMv[idx];
+      if(ttD[idx]>=depth){const v=ttV[idx],f=ttF[idx];
+        if(f===1)return v;if(f===2&&v>=beta)return v;if(f===3&&v<=alpha)return v;}}
+    const ms=order(b,gen(b,side,false),ttMove,ply);
+    let best=-INF,bestM=0,legal=0;const a0=alpha;
+    for(const m of ms){
+      const q=make(b,m);
+      if(inCheck(b,side)){unmake(b,m,q);continue;}
+      legal++;
+      let v;
+      if(legal===1)v=-search(b,side^1,depth-1,-beta,-alpha,ply+1);
+      else{v=-search(b,side^1,depth-1,-alpha-1,-alpha,ply+1);
+        if(!stopped&&v>alpha&&v<beta)v=-search(b,side^1,depth-1,-beta,-alpha,ply+1);}
+      unmake(b,m,q);
+      if(stopped)return 0;
+      if(v>best){best=v;bestM=m;}
+      if(v>alpha)alpha=v;
+      if(alpha>=beta){
+        if(!q){hist[(m&127)*90+(m>>7)]+=depth*depth;
+          if(killers[ply*2]!==m){killers[ply*2+1]=killers[ply*2];killers[ply*2]=m;}}
+        break;}
+    }
+    if(!legal)return -MATE+ply;
+    if(Math.abs(best)<MATE-1000){ttK[idx]=h2;ttD[idx]=depth;ttV[idx]=best;ttMv[idx]=bestM;ttF[idx]=best<=a0?3:best>=beta?2:1;}
+    return best;
+  }
+  function rootSearch(b,side,maxD,ms,partial,moves){
+    moves=moves||legalMoves(b,side);
+    hashBoard(b,side);
+    const t0=Date.now();stopped=false;nodes=0;
+    for(let i=0;i<hist.length;i++)hist[i]>>=2;
+    let ord=order(b,moves,0,0),bestM=ord[0],bestS=-INF,depthDone=0;
+    for(let d=1;d<=maxD;d++){
+      stopAt=d===1?Infinity:t0+ms;
+      let alpha=-INF,cb=0,cs=-INF;const sc=[];
+      for(const m of ord){
+        const q=make(b,m);let v;
+        if(cs===-INF)v=-search(b,side^1,d-1,-INF,INF,1);
+        else{v=-search(b,side^1,d-1,-alpha-1,-alpha,1);if(!stopped&&v>alpha)v=-search(b,side^1,d-1,-INF,-alpha,1);}
+        unmake(b,m,q);
+        if(stopped)break;
+        sc.push([m,v]);if(v>cs){cs=v;cb=m;}if(v>alpha)alpha=v;
+      }
+      if(stopped){if(partial&&sc.length&&cs>-INF){bestM=cb;bestS=cs;}break;}
+      bestM=cb;bestS=cs;depthDone=d;
+      sc.sort((x,y)=>y[1]-x[1]);ord=sc.map(x=>x[0]);
+      if(Math.abs(cs)>MATE-200)break;
+      if(Date.now()-t0>ms*0.45)break;
+    }
+    return{move:bestM,score:bestS,depth:depthDone,nodes};
+  }
+  const LV=[null,{d:1,noise:200,rand:0.22,t:600},{d:2,noise:80,rand:0.05,t:900},{d:3,noise:25,rand:0,t:1800},{d:5,t:2000},{d:8,t:3200}];
+  function think(board,side,level){
+    const b=Int8Array.from(board),L=LV[level]||LV[3];
+    const moves=legalMoves(b,side);if(!moves.length)return{move:0,score:-MATE,depth:0};
+    if(L.noise){
+      if(L.rand&&Math.random()<L.rand)return{move:moves[(Math.random()*moves.length)|0],score:0,depth:0};
+      hashBoard(b,side);stopped=false;stopAt=Date.now()+L.t*4;
+      let best=moves[0],bs=-INF;
+      for(const m of moves){const q=make(b,m);const v=-search(b,side^1,L.d-1,-INF,INF,1);unmake(b,m,q);
+        const nv=v+(Math.random()*2-1)*L.noise;if(nv>bs){bs=nv;best=m;}}
+      return{move:best,score:bs|0,depth:L.d};
+    }
+    return rootSearch(b,side,L.d,L.t,true,moves);
+  }
+  function analyzeGame(start,moves,player,onProgress){
+    const b=Int8Array.from(start),n=moves.length,out=[];let side=0;
+    for(let i=0;i<=n;i++){
+      const lm=legalMoves(b,side);let e;
+      if(!lm.length)e={b:0,s:-MATE,p:null,l:null};
+      else{
+        const r=rootSearch(b,side,5,450,false,lm);
+        e={b:r.move,s:r.score,p:null,l:null};
+        if(i<n&&side===player){
+          const m=moves[i];
+          if(m===r.move)e.p=r.score;
+          else{hashBoard(b,side);stopped=false;stopAt=Infinity;const q=make(b,m);e.p=-search(b,side^1,r.depth-1,-INF,INF,1);unmake(b,m,q);}
+          e.l=Math.max(0,e.s-e.p);
+        }
+      }
+      out.push(e);
+      if(i<n){make(b,moves[i]);side^=1;}
+      if(onProgress)onProgress(i+1,n+1);
+    }
+    return out;
+  }
+  return{K,A,B,N,R,C,P,MATE,INIT,gen,legalMoves,inCheck,make,unmake,evaluate,think,analyzeGame};
+}
+
+/* ================= App ================= */
+const E=ENGINE();
+const {K,A,B,N,R,C,P,MATE}=E;
+const NAME=[['','帥','仕','相','傌','俥','炮','兵'],['','將','士','象','馬','車','砲','卒']];
+const CNUM=['','一','二','三','四','五','六','七','八','九'];
+const ANUM=['','1','2','3','4','5','6','7','8','9'];
+const LEVELS=[null,
+  {name:'入門',desc:'只看一步，常有隨性走法，會漏看你的吃子。適合剛學規則。'},
+  {name:'初學',desc:'看兩步，會抓明顯的吃子機會，但守不住複雜局面。'},
+  {name:'棋友',desc:'看三步並計算吃子交換，偶爾有小失誤。'},
+  {name:'高手',desc:'看五步加上完整的兌子計算，很少送子。'},
+  {name:'大師',desc:'最多深算八步，每步思考約三秒，殺棋很少漏。'}];
+const SEV={dub:{t:'疑問手',s:'?!'},mis:{t:'錯著',s:'?'},bla:{t:'敗著',s:'??'}};
+const sevOf=l=>l==null?'':l<40?'':l<100?'dub':l<250?'mis':'bla';
+const $=id=>document.getElementById(id);
+const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
+
+function notation(b,m){
+  const f=m&127,t=m>>7,p=b[f],ty=p&7,s=(p>>3)&1;
+  const fr=(f/9)|0,fc=f%9,tr=(t/9)|0,tc=t%9;
+  const file=c=>s?c+1:9-c,num=n=>(s?ANUM:CNUM)[n],fwd=r=>s?r:-r;
+  const same=[];for(let r=0;r<10;r++)if(b[r*9+fc]===p)same.push(r);
+  let head;
+  if(same.length>=2&&ty!==K){same.sort((x,y)=>fwd(y)-fwd(x));
+    const labels=same.length===2?['前','後']:same.length===3?['前','中','後']:['一','二','三','四','五'];
+    head=labels[same.indexOf(fr)]+NAME[s][ty];}
+  else head=NAME[s][ty]+num(file(fc));
+  let tail;
+  if(tr===fr)tail='平'+num(file(tc));
+  else{const d=(s?tr>fr:tr<fr)?'進':'退';tail=d+([N,A,B].includes(ty)?num(file(tc)):num(Math.abs(tr-fr)));}
+  return head+tail;
+}
+
+/* ---- worker ---- */
+let worker=null,reqId=0;const pending=new Map();
+function makeWorker(){
+  try{
+    const src=`const E=(${ENGINE.toString()})();
+onmessage=e=>{const d=e.data;
+ if(d.cmd==='think'){const r=E.think(d.board,d.side,d.level);postMessage(Object.assign({id:d.id,cmd:'think'},r));}
+ else if(d.cmd==='analyze'){const res=E.analyzeGame(d.start,d.moves,d.player,(i,n)=>postMessage({id:d.id,cmd:'progress',i,n}));postMessage({id:d.id,cmd:'analyze',res});}};`;
+    worker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+    worker.onmessage=e=>{const d=e.data,h=pending.get(d.id);if(!h)return;
+      if(d.cmd==='progress'){h.progress&&h.progress(d.i,d.n);}else{pending.delete(d.id);h.resolve(d);}};
+    worker.onerror=()=>{worker=null;};
+  }catch(e){worker=null;}
+}
+function call(msg,progress){
+  return new Promise(resolve=>{const id=++reqId;
+    if(worker){pending.set(id,{resolve,progress});worker.postMessage(Object.assign({id},msg));}
+    else setTimeout(()=>{if(msg.cmd==='think')resolve(E.think(msg.board,msg.side,msg.level));
+      else resolve({res:E.analyzeGame(msg.start,msg.moves,msg.player,progress)});},30);});
+}
+function resetWorker(){if(worker)worker.terminate();pending.clear();worker=null;makeWorker();}
+
+/* ---- state ---- */
+let G=null;            // current game
+let prefs=store.get('xq.prefs',{level:3,side:0});
+let sel=-1,targets=[],thinking=false,review=null,analyzing=null,justMoved=-1;
+let history=store.get('xq.history',[]);
+
+function newGame(){
+  resetWorker();cancelAnim();analyzing=null;
+  G={id:Date.now().toString(36),date:new Date().toISOString(),level:prefs.level,player:prefs.side,
+     start:E.INIT.slice(),moves:[],status:'playing',result:null,reason:'',analysis:null};
+  rebuild();sel=-1;targets=[];review=null;justMoved=-1;
+  save();renderAll();maybeAI();
+}
+function rebuild(){
+  G.board=Int8Array.from(G.start);G.side=0;G.notes=[];G.reps=new Map();G.quiet=0;
+  G.reps.set(G.board.join(',')+'|0',1);
+  for(const m of G.moves){const q=G.board[m>>7];G.notes.push(notation(G.board,m));E.make(G.board,m);G.side^=1;
+    G.quiet=q?0:G.quiet+1;const key=G.board.join(',')+'|'+G.side;G.reps.set(key,(G.reps.get(key)||0)+1);}
+}
+function serialize(g){return g&&{id:g.id,date:g.date,level:g.level,player:g.player,start:g.start,moves:g.moves,status:g.status,result:g.result,reason:g.reason,analysis:g.analysis};}
+function save(){store.set('xq.current',serialize(G));}
+
+function commit(m){
+  const from=m&127,to=m>>7,p=G.board[from],q=G.board[to];
+  G.notes.push(notation(G.board,m));E.make(G.board,m);G.moves.push(m);G.side^=1;
+  G.quiet=q?0:G.quiet+1;
+  const key=G.board.join(',')+'|'+G.side;G.reps.set(key,(G.reps.get(key)||0)+1);
+  justMoved=REDUCE?to:-1;sel=-1;targets=[];
+  if(!REDUCE)anim={from,to,p,q};
+  const legal=E.legalMoves(G.board,G.side);
+  if(!legal.length)finish(G.side^1,E.inCheck(G.board,G.side)?'將死':'困斃（無子可動）');
+  else if(G.reps.get(key)>=3)finish(-1,'同一局面重複三次');
+  else if(G.quiet>=120)finish(-1,'連續 120 手未吃子');
+  save();renderAll();
+  if(anim){const a=anim;animP=playMove(a).then(()=>{if(anim===a){anim=null;renderBoard();}});}
+  else sfx(q?'crack':'wood');
+  if(G.status==='playing'&&E.inCheck(G.board,G.side))animP.then(()=>sfx('check'));
+  if(G.status==='over')animP.then(endJingle);
+  if(G.status==='playing')maybeAI();
+}
+function finish(winner,reason){
+  G.status='over';G.result=winner===-1?'draw':winner===0?'red':'black';G.reason=reason;
+  history=history.filter(h=>h.id!==G.id);history.unshift(serialize(G));history=history.slice(0,30);store.set('xq.history',history);
+  if(G.moves.length>=2)startAnalysis();
+}
+function maybeAI(){
+  if(G.status!=='playing'||G.side===G.player||thinking)return;
+  thinking=true;renderTurn();
+  const gid=G.id,ply=G.moves.length,t0=Date.now();
+  call({cmd:'think',board:Array.from(G.board),side:G.side,level:G.level}).then(r=>{
+    const wait=Math.max(0,380-(Date.now()-t0));
+    setTimeout(()=>animP.then(()=>{thinking=false;
+      if(!G||G.id!==gid||G.moves.length!==ply||G.status!=='playing')return;
+      if(!r.move){renderAll();return;}
+      commit(r.move);}),wait);
+  });
+}
+let resignArmed=0;
+function resign(){
+  if(!G||G.status!=='playing')return;
+  if(!resignArmed){resignArmed=setTimeout(()=>{resignArmed=0;renderRail();},3000);renderRail();return;}
+  clearTimeout(resignArmed);resignArmed=0;
+  resetWorker();thinking=false;
+  finish(G.player^1,'認輸');save();renderAll();endJingle();
+}
+function startAnalysis(){
+  const g=G;analyzing={id:g.id,i:0,n:g.moves.length+1};renderAnalysis();
+  call({cmd:'analyze',start:g.start,moves:g.moves,player:g.player},(i,n)=>{if(analyzing&&analyzing.id===g.id){analyzing.i=i;analyzing.n=n;updateProgress();}})
+  .then(r=>{if(!r||!r.res)return;g.analysis=r.res.map(e=>({b:e.b,s:e.s,p:e.p,l:e.l}));
+    if(analyzing&&analyzing.id===g.id)analyzing=null;
+    const h=history.find(x=>x.id===g.id);if(h){h.analysis=g.analysis;store.set('xq.history',history);}
+    if(G===g){save();renderAll();}});
+}
+
+/* ---- board rendering ---- */
+const SVGNS='http://www.w3.org/2000/svg';
+const X=c=>44+c*64,Y=r=>60+r*64;
+const flip=()=>G&&G.player===1;
+const disp=sq=>{const r=(sq/9)|0,c=sq%9;return flip()?[8-c,9-r]:[c,r];};
+function el(tag,attrs,parent,text){const e=document.createElementNS(SVGNS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;if(parent)parent.appendChild(e);return e;}
+function drawStatic(){
+  const g=$('g-static');g.innerHTML='';
+  el('rect',{x:4,y:4,width:592,height:688,rx:14,class:'bd-frame'},g);
+  el('rect',{x:12,y:30,width:576,height:636,rx:8,class:'bd-wood'},g);
+  el('rect',{x:X(0)-7,y:Y(0)-7,width:64*8+14,height:64*9+14,class:'bd-edge'},g);
+  let d='';
+  for(let r=0;r<10;r++)d+=`M${X(0)} ${Y(r)}H${X(8)}`;
+  d+=`M${X(0)} ${Y(0)}V${Y(9)}M${X(8)} ${Y(0)}V${Y(9)}`;
+  for(let c=1;c<8;c++)d+=`M${X(c)} ${Y(0)}V${Y(4)}M${X(c)} ${Y(5)}V${Y(9)}`;
+  d+=`M${X(3)} ${Y(0)}L${X(5)} ${Y(2)}M${X(5)} ${Y(0)}L${X(3)} ${Y(2)}M${X(3)} ${Y(7)}L${X(5)} ${Y(9)}M${X(5)} ${Y(7)}L${X(3)} ${Y(9)}`;
+  el('path',{d,class:'bd-line'},g);
+  let mk='';const a=5,l=11;
+  const spots=[[2,1],[2,7],[7,1],[7,7]];for(const c of[0,2,4,6,8]){spots.push([3,c],[6,c]);}
+  for(const[r,c]of spots){const x=X(c),y=Y(r);
+    for(const sx of[-1,1]){if((c===0&&sx<0)||(c===8&&sx>0))continue;
+      for(const sy of[-1,1])mk+=`M${x+sx*(a+l)} ${y+sy*a}H${x+sx*a}V${y+sy*(a+l)}`;}}
+  el('path',{d:mk,class:'bd-mark'},g);
+  el('text',{x:(X(1)+X(3))/2+10,y:(Y(4)+Y(5))/2,class:'bd-river'},g,'楚河');
+  el('text',{x:(X(5)+X(7))/2-10,y:(Y(4)+Y(5))/2,class:'bd-river'},g,'漢界');
+  // file numbers: bottom for the side sitting at the bottom
+  const bot=flip()?1:0;
+  for(let dc=0;dc<9;dc++){const c=flip()?8-dc:dc;
+    const fb=bot?ANUM[c+1]:CNUM[9-c], ft=bot?CNUM[9-c]:ANUM[c+1];
+    el('text',{x:X(dc),y:Y(9)+41,class:'bd-file'},g,fb);
+    el('text',{x:X(dc),y:Y(0)-43,class:'bd-file'},g,ft);}
+}
+function viewBoard(){return review===null?G.board:positionAt(review);}
+function positionAt(k){const b=Int8Array.from(G.start);for(let i=0;i<k;i++)E.make(b,G.moves[i]);return b;}
+function renderBoard(){
+  const b=viewBoard(),gp=$('g-pieces'),gm=$('g-marks'),go=$('g-over');
+  gp.innerHTML='';gm.innerHTML='';go.innerHTML='';
+  const k=review===null?G.moves.length:review;
+  const lastM=k>0?G.moves[k-1]:0;
+  // side to move in viewed position
+  const stm=k%2;
+  let chkSq=-1;
+  if(E.inCheck(b,stm)){for(let i=0;i<90;i++)if(b[i]===(stm?9:1))chkSq=i;}
+  if(lastM&&review===null){const[x,y]=disp(lastM&127);el('circle',{cx:X(x),cy:Y(y),r:26,class:'lastfrom'},gm);}
+  const live=review===null&&G.status==='playing'&&!thinking&&!anim&&G.side===G.player;
+  for(let i=0;i<90;i++){const p=b[i];if(!p)continue;
+    if(anim&&review===null&&i===anim.to)continue;
+    const s=(p>>3)&1,[dx,dy]=disp(i);
+    let cls='pc '+(s?'b':'r');
+    if(live&&s===G.player)cls+=' mine';
+    if(i===sel)cls+=' sel';
+    if(lastM&&i===(lastM>>7))cls+=' last';
+    if(i===chkSq)cls+=' chk';
+    if(review===null&&i===justMoved)cls+=' drop';
+    const g=pieceNode(gp,p,cls);g.setAttribute('transform',`translate(${X(dx)} ${Y(dy)})`);
+  }
+  justMoved=-1;
+  for(const m of targets){const t=m>>7,[x,y]=disp(t);
+    if(b[t])el('circle',{cx:X(x),cy:Y(y),r:31,class:'tg-cap'},gm);
+    else el('circle',{cx:X(x),cy:Y(y),r:8,class:'tg-dot'},gm);}
+  if(review!==null&&review<G.moves.length){
+    const A=G.analysis&&G.analysis[review];
+    if(A&&A.b&&A.b!==G.moves[review])arrow(A.b,'best');
+    arrow(G.moves[review],'played');
+  }
+}
+function arrow(m,kind){const[fx,fy]=disp(m&127),[tx,ty]=disp(m>>7);
+  const x1=X(fx),y1=Y(fy),x2=X(tx),y2=Y(ty),L=Math.hypot(x2-x1,y2-y1),sh=Math.min(20,L/3);
+  el('line',{x1:x1+(x2-x1)/L*14,y1:y1+(y2-y1)/L*14,x2:x2-(x2-x1)/L*sh,y2:y2-(y2-y1)/L*sh,class:'arrow '+kind,'marker-end':`url(#ah-${kind})`},$('g-over'));}
+
+/* ---- sound: all synthesized with Web Audio, nothing downloaded ---- */
+let soundPrefs=store.get('xq.sound',{sfx:true,music:true,vol:70});
+const AU={ctx:null,master:null,sfx:null,music:null,rev:null,noise:null,musicOn:false,timer:0,next:0,step:0,last:7};
+function audioInit(){
+  if(AU.ctx)return true;
+  try{const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return false;
+    const c=AU.ctx=new Ctx();
+    AU.master=c.createGain();AU.master.gain.value=soundPrefs.vol/100;AU.master.connect(c.destination);
+    AU.sfx=c.createGain();AU.sfx.gain.value=0.9;AU.sfx.connect(AU.master);
+    AU.music=c.createGain();AU.music.gain.value=0;AU.music.connect(AU.master);
+    const len=Math.floor(c.sampleRate*2.6),buf=c.createBuffer(2,len,c.sampleRate);
+    for(let ch=0;ch<2;ch++){const d=buf.getChannelData(ch);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3);}
+    AU.rev=c.createConvolver();AU.rev.buffer=buf;const rg=c.createGain();rg.gain.value=0.45;AU.rev.connect(rg);rg.connect(AU.master);
+    const nb=c.createBuffer(1,c.sampleRate,c.sampleRate),nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;AU.noise=nb;
+    return true;}catch(e){AU.ctx=null;return false;}
+}
+const anow=()=>AU.ctx.currentTime;
+function aenv(g,t,a,peak,dec){g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+a);g.gain.exponentialRampToValueAtTime(0.0001,t+a+dec);}
+function sendRev(node,amt){if(!amt)return;const s=AU.ctx.createGain();s.gain.value=amt;node.connect(s);s.connect(AU.rev);}
+function tone(freq,t,o={}){const{type='sine',a=0.005,dec=0.3,peak=0.5,dest=AU.sfx,glide=null,rev=0}=o;
+  const c=AU.ctx,os=c.createOscillator(),g=c.createGain();os.type=type;os.frequency.setValueAtTime(freq,t);
+  if(glide)os.frequency.exponentialRampToValueAtTime(glide,t+a+dec);
+  aenv(g,t,a,peak,dec);os.connect(g);g.connect(dest);sendRev(g,rev);os.start(t);os.stop(t+a+dec+0.05);}
+function noise(t,o={}){const{f=1000,q=1,type='bandpass',a=0.003,dec=0.12,peak=0.5,dest=AU.sfx,sweep=null,rev=0}=o;
+  const c=AU.ctx,s=c.createBufferSource(),fl=c.createBiquadFilter(),g=c.createGain();s.buffer=AU.noise;
+  fl.type=type;fl.frequency.setValueAtTime(f,t);if(sweep)fl.frequency.exponentialRampToValueAtTime(sweep,t+a+dec);fl.Q.value=q;
+  aenv(g,t,a,peak,dec);s.connect(fl);fl.connect(g);g.connect(dest);sendRev(g,rev);s.start(t);s.stop(t+a+dec+0.05);}
+const SFX={
+  wood(v=1){const t=anow();noise(t,{f:1900,q:2.5,dec:0.07,peak:0.6*v});tone(190,t,{dec:0.09,peak:0.5*v,glide:120});tone(820,t,{type:'triangle',dec:0.05,peak:0.18*v});},
+  select(){tone(1250,anow(),{type:'triangle',dec:0.05,peak:0.12});},
+  whoosh(d){noise(anow(),{f:400,q:0.8,a:d*0.5,dec:d*0.5,peak:0.35,sweep:2400});},
+  boom(){const t=anow();tone(110,t,{dec:0.7,peak:0.9,glide:38});noise(t,{type:'lowpass',f:1600,dec:0.6,peak:0.8,sweep:120,rev:0.4});noise(t,{f:3000,q:1,dec:0.08,peak:0.5});},
+  crack(){const t=anow();noise(t,{f:2600,q:3,dec:0.06,peak:0.7});tone(300,t,{dec:0.12,peak:0.5,glide:150});noise(t+0.03,{f:1200,q:1,dec:0.25,peak:0.2,sweep:4000});},
+  clop(hi){const t=anow();tone(hi?1050:800,t,{dec:0.06,peak:0.4,glide:hi?700:520});noise(t,{f:hi?2400:1800,q:4,dec:0.04,peak:0.35});},
+  neigh(){const c=AU.ctx,t=anow(),o=c.createOscillator(),g=c.createGain(),f=c.createBiquadFilter(),lfo=c.createOscillator(),lg=c.createGain();
+    o.type='sawtooth';o.frequency.setValueAtTime(600,t);o.frequency.linearRampToValueAtTime(1100,t+0.12);o.frequency.linearRampToValueAtTime(820,t+0.35);o.frequency.linearRampToValueAtTime(500,t+0.6);
+    lfo.frequency.value=22;lg.gain.value=60;lfo.connect(lg);lg.connect(o.frequency);
+    f.type='bandpass';f.frequency.value=1400;f.Q.value=3;aenv(g,t,0.03,0.16,0.58);o.connect(f);f.connect(g);g.connect(AU.sfx);
+    o.start(t);lfo.start(t);o.stop(t+0.7);lfo.stop(t+0.7);},
+  rumble(d){noise(anow(),{type:'lowpass',f:180,q:1,a:d*0.8,dec:d*0.3,peak:0.7,sweep:420});},
+  thump(){const t=anow();tone(70,t,{dec:0.35,peak:0.9,glide:40});noise(t,{type:'lowpass',f:500,dec:0.3,peak:0.5,sweep:80});},
+  march(){const t=anow();for(const d of[0,0.22])tone(600,t+d,{type:'triangle',dec:0.04,peak:0.15});},
+  bell(){const t=anow();for(const[f,p,d]of[[523,0.3,1.6],[784,0.13,1.2],[1318,0.07,0.8],[1569,0.04,0.5]])tone(f,t,{dec:d,peak:p,rev:0.6});},
+  check(){const t=anow();tone(180,t,{dec:0.25,peak:0.8,glide:90});noise(t,{type:'lowpass',f:800,dec:0.2,peak:0.5});
+    tone(880,t+0.12,{type:'triangle',dec:0.5,peak:0.22,rev:0.5});tone(1174,t+0.24,{type:'triangle',dec:0.6,peak:0.18,rev:0.5});},
+  jingle(kind){const t=anow(),sc=[294,330,370,440,494,587,659,740,880];
+    const seq=kind==='win'?[0,2,3,4,5,7,8]:kind==='lose'?[5,4,3,1,0]:[2,3,2,0];
+    seq.forEach((i,k)=>tone(sc[i],t+k*0.16,{type:'triangle',dec:k===seq.length-1?1.4:0.6,peak:0.28,rev:0.6}));}
+};
+function sfx(name,...a){if(!soundPrefs.sfx||!AU.ctx||AU.ctx.state!=='running')return;try{SFX[name](...a);}catch(e){}}
+function startSnd(ty,dur){if(ty===C)sfx('whoosh',dur/1000);else if(ty===R)sfx('rumble',dur/1000);else if(ty===P)sfx('march');}
+function impactSnd(ty){if(ty===C)sfx('boom');else{sfx('crack');if(ty===N)sfx('neigh');}}
+function landSnd(ty,cap){if(ty===C&&cap)return;if(ty===N)sfx('clop',false);else if(ty===B)sfx('thump');
+  else if(ty===K){sfx('wood');sfx('bell');}else sfx('wood',ty===R?1.2:ty===A?0.7:0.9);}
+function endJingle(){if(!G||G.status!=='over')return;const pw=(G.result==='red'&&G.player===0)||(G.result==='black'&&G.player===1);
+  sfx('jingle',G.result==='draw'?'draw':pw?'win':'lose');}
+
+/* music: slow pentatonic (宮商角徵羽) plucked-zither phrases over a soft drone */
+const PENT=[0,2,4,7,9];
+const nfreq=n=>146.83*Math.pow(2,(12*Math.floor(n/5)+PENT[((n%5)+5)%5])/12);
+function pluck(f,t,v,vib){const c=AU.ctx,g=c.createGain(),lp=c.createBiquadFilter();
+  lp.type='lowpass';lp.frequency.setValueAtTime(f*6,t);lp.frequency.exponentialRampToValueAtTime(f*1.4,t+1.2);
+  const o1=c.createOscillator(),o2=c.createOscillator(),g2=c.createGain();o1.type='triangle';o2.type='sine';
+  o1.frequency.setValueAtTime(f*1.015,t);o1.frequency.exponentialRampToValueAtTime(f,t+0.08);o2.frequency.value=f*2;g2.gain.value=0.22;
+  if(vib){const l=c.createOscillator(),lg=c.createGain();l.frequency.value=5.5;lg.gain.setValueAtTime(0,t);lg.gain.linearRampToValueAtTime(f*0.012,t+0.6);l.connect(lg);lg.connect(o1.frequency);l.start(t);l.stop(t+2.5);}
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(v,t+0.006);g.gain.exponentialRampToValueAtTime(0.0001,t+2.4);
+  o1.connect(lp);o2.connect(g2);g2.connect(lp);lp.connect(g);g.connect(AU.music);sendRev(g,0.55);
+  o1.start(t);o2.start(t);o1.stop(t+2.5);o2.stop(t+2.5);}
+function drone(t,dur){const c=AU.ctx;for(const[f,v]of[[73.42,0.05],[110,0.03]]){const o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.value=f;
+  g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(v,t+3);g.gain.setValueAtTime(v,t+dur-3);g.gain.linearRampToValueAtTime(0.0001,t+dur);
+  o.connect(g);g.connect(AU.music);o.start(t);o.stop(t+dur+0.1);}}
+const BEAT=0.4;
+function scheduleStep(t){
+  const s=AU.step%32,r=Math.random;
+  if(s===0)drone(t,BEAT*32);
+  if(s%16===15)return;
+  if(s%16===14){AU.last=r()<0.5?5:10;pluck(nfreq(AU.last),t,0.2,true);if(r()<0.5)pluck(nfreq(AU.last-5),t,0.1);return;}
+  if(r()<(s%4===0?0.85:0.42)){
+    AU.last=Math.max(2,Math.min(12,AU.last+[-2,-1,-1,0,1,1,2][(r()*7)|0]));
+    if(r()<0.12){const dir=r()<0.5?1:-1;for(let k=0;k<4;k++)pluck(nfreq(AU.last+dir*k),t+k*0.09,0.11);AU.last=Math.max(2,Math.min(12,AU.last+dir*3));}
+    else pluck(nfreq(AU.last),t,s%4===0?0.2:0.13,s%8===0&&r()<0.5);
+    if(r()<0.15)pluck(nfreq(AU.last-5),t,0.09);
+  }
+}
+function musicTick(){if(!AU.musicOn)return;const c=AU.ctx;
+  while(AU.next<c.currentTime+0.6){scheduleStep(AU.next);AU.next+=BEAT;AU.step++;}
+  AU.timer=setTimeout(musicTick,150);}
+function startMusic(){if(!AU.ctx||AU.ctx.state!=='running'||AU.musicOn)return;AU.musicOn=true;
+  const g=AU.music.gain,t=anow();g.cancelScheduledValues(t);g.setValueAtTime(g.value,t);g.linearRampToValueAtTime(0.55,t+1.5);
+  AU.next=t+0.1;AU.step=0;musicTick();}
+function stopMusic(){if(!AU.musicOn)return;AU.musicOn=false;clearTimeout(AU.timer);
+  const g=AU.music.gain,t=anow();g.cancelScheduledValues(t);g.setValueAtTime(g.value,t);g.linearRampToValueAtTime(0,t+0.6);}
+function unlockAudio(e){
+  if(!audioInit())return;
+  const go=()=>{if(soundPrefs.music&&!(e&&e.target&&e.target.closest&&e.target.closest('#snd-music')))startMusic();};
+  if(AU.ctx.state!=='running')AU.ctx.resume().then(go).catch(()=>{});else go();
+}
+document.addEventListener('pointerdown',unlockAudio);
+document.addEventListener('keydown',unlockAudio);
+document.addEventListener('visibilitychange',()=>{if(!AU.ctx)return;if(document.hidden)stopMusic();else if(soundPrefs.music&&AU.ctx.state==='running')startMusic();});
+function renderSound(){
+  const s=$('snd-sfx'),m=$('snd-music'),v=$('snd-vol');
+  s.setAttribute('aria-pressed',String(soundPrefs.sfx));s.querySelector('b').textContent=soundPrefs.sfx?'開':'關';
+  m.setAttribute('aria-pressed',String(soundPrefs.music));m.querySelector('b').textContent=soundPrefs.music?'開':'關';
+  v.value=soundPrefs.vol;$('snd-vol-n').textContent=soundPrefs.vol;
+}
+$('snd-sfx').onclick=()=>{soundPrefs.sfx=!soundPrefs.sfx;store.set('xq.sound',soundPrefs);renderSound();audioInit();sfx('select');};
+$('snd-music').onclick=()=>{soundPrefs.music=!soundPrefs.music;store.set('xq.sound',soundPrefs);renderSound();
+  if(soundPrefs.music){if(audioInit()){if(AU.ctx.state!=='running')AU.ctx.resume().then(startMusic).catch(()=>{});else startMusic();}}else stopMusic();};
+$('snd-vol').oninput=e=>{soundPrefs.vol=+e.target.value;$('snd-vol-n').textContent=soundPrefs.vol;
+  if(AU.master)AU.master.gain.setTargetAtTime(soundPrefs.vol/100,AU.ctx.currentTime,0.05);};
+$('snd-vol').onchange=()=>store.set('xq.sound',soundPrefs);
+renderSound();
+
+/* ---- move animations: each piece moves the way its name suggests ---- */
+const REDUCE=(()=>{try{return matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){return false;}})();
+let anim=null,animP=Promise.resolve(),animGen=0;
+const tasks=new Set();let loopOn=false;
+function loop(now){
+  for(const tk of [...tasks]){if(tk.t0==null){tk.t0=now;tk.prev=now;}
+    const r=tk.step(now-tk.t0,now-tk.prev);tk.prev=now;if(r===false)tasks.delete(tk);}
+  if(tasks.size)requestAnimationFrame(loop);else loopOn=false;}
+function addTask(tk){tasks.add(tk);if(!loopOn){loopOn=true;requestAnimationFrame(loop);}return tk;}
+function cancelAnim(){animGen++;tasks.clear();anim=null;animP=Promise.resolve();$('g-anim').innerHTML='';$('g-fx').innerHTML='';}
+function pieceNode(parent,p,cls){const s=(p>>3)&1;const g=el('g',{class:cls||('pc '+(s?'b':'r'))},parent);
+  const lift=el('g',{class:'lift'},g);el('circle',{r:28,class:'disc'},lift);el('circle',{r:23.5,class:'ring'},lift);
+  el('text',{y:1},lift,NAME[s][p&7]);return g;}
+function setPose(g,x,y,P){let t=`translate(${x.toFixed(1)} ${y.toFixed(1)})`;
+  if(P.rot)t+=` rotate(${P.rot.toFixed(1)})`;
+  if(P.sx!=null&&(P.sx!==1||P.sy!==1)){const a=(P.ang||0).toFixed(1);t+=` rotate(${a}) scale(${P.sx.toFixed(3)} ${P.sy.toFixed(3)}) rotate(${-a})`;}
+  if(P.s&&P.s!==1)t+=` scale(${P.s.toFixed(3)})`;
+  g.setAttribute('transform',t);}
+const ease={io:t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2,out:t=>1-Math.pow(1-t,3)};
+function motion(type,x0,y0,x1,y1,cap){
+  const dx=x1-x0,dy=y1-y0,d=Math.hypot(dx,dy)||1,ang=Math.atan2(dy,dx)*180/Math.PI,sg=dx>0?1:dx<0?-1:(dy<0?1:-1);
+  const S=Math.sin,PI=Math.PI,L=t=>({x:x0+dx*t,y:y0+dy*t});
+  switch(type){
+    case C:{// 砲：高拋飛行，吃子時旋轉砸下
+      const H=cap?70+d*0.3:22+d*0.1,dur=cap?560+d*0.3:380+d*0.25;
+      return{dur,impact:0.98,land:cap?2:0.98,fx:'dustS',f:t=>{const p=ease.io(t),a=4*t*(1-t);
+        return{...L(p),h:H*a,s:1+(cap?0.35:0.12)*a,rot:cap?sg*360*p:0};}};}
+    case N:{// 馬：先踏馬腳，再躍起落地
+      const ax=Math.abs(dx)>Math.abs(dy),lx=x0+(ax?Math.sign(dx)*64:0),ly=y0+(ax?0:Math.sign(dy)*64);
+      return{dur:680,impact:0.8,land:0.86,fx:'dust',f:t=>{
+        if(t<0.34){const u=t/0.34,p=ease.io(u);return{x:x0+(lx-x0)*p,y:y0+(ly-y0)*p,h:16*S(PI*u),rot:-sg*10*S(PI*u)};}
+        if(t<0.86){const u=(t-0.34)/0.52,p=ease.io(u);return{x:lx+(x1-lx)*p,y:ly+(y1-ly)*p,h:46*S(PI*u),rot:-sg*18*S(2*PI*u),s:1+0.1*S(PI*u)};}
+        const u=(t-0.86)/0.14,k=0.15*S(PI*u);return{x:x1,y:y1,sx:1+k,sy:1-k,ang:0};}};}
+    case R:{// 車：直線衝鋒加速，煞車回彈
+      const dur=260+d*0.55;
+      return{dur,impact:0.72,land:0.8,fx:'dust',f:t=>{
+        if(t<0.8){const u=t/0.8,k=0.28*u;return{...L(u*u),sx:1+k,sy:1-k*0.5,ang};}
+        const u=(t-0.8)/0.2,o=10*S(PI*u)*(1-u),k=-0.14*S(PI*u);return{x:x1+dx/d*o,y:y1+dy/d*o,sx:1+k,sy:1-k*0.5,ang};}};}
+    case P:// 兵：踏步前進
+      return{dur:460,impact:0.8,land:2,f:t=>({...L(ease.io(t)),h:9*Math.abs(S(2*PI*t)),rot:7*S(2*PI*t)})};
+    case B:// 象：沉重搖擺，落地震動
+      return{dur:700,impact:0.82,land:0.86,fx:'dustB',f:t=>{
+        if(t<0.86){const u=t/0.86;return{...L(ease.io(u)),h:14*S(PI*u),rot:6*S(2*PI*u),s:1+0.05*S(PI*u)};}
+        const u=(t-0.86)/0.14,k=0.18*S(PI*u);return{x:x1,y:y1,sx:1+k,sy:1-k,ang:0};}};
+    case A:// 仕：輕快斜步
+      return{dur:320,impact:0.7,land:2,f:t=>({...L(ease.out(t)),h:6*S(PI*t),s:1+0.06*S(PI*t)})};
+    default:// 帥：穩重抬起，落定生光
+      return{dur:540,impact:0.85,land:0.95,fx:'aura',f:t=>({...L(ease.io(t)),h:18*S(PI*t),s:1+0.16*S(PI*t)})};
+  }
+}
+function fxParticle(make,life,upd){const n=make();addTask({step(age,dt){if(age>=life){n.remove();return false;}upd(n,age/life,Math.min(dt,40));}});}
+function shake(a){try{$('g-pieces').animate([{transform:'translate(0px,0px)'},{transform:`translate(${a}px,${-a/2}px)`},{transform:`translate(${-a*.7}px,${a/2}px)`},{transform:`translate(${a*.4}px,0px)`},{transform:'translate(0px,0px)'}],{duration:280,easing:'ease-out'});}catch(e){}}
+function explode(x,y,big){
+  const Lr=$('g-fx');
+  if(big)fxParticle(()=>el('circle',{cx:x,cy:y,r:10,class:'fx-flash'},Lr),260,(n,t)=>{n.setAttribute('r',10+50*t);n.setAttribute('opacity',1-t);});
+  const R=big?75:40;
+  fxParticle(()=>el('circle',{cx:x,cy:y,r:12,class:'fx-ring'},Lr),big?520:380,(n,t)=>{n.setAttribute('r',12+R*(1-Math.pow(1-t,3)));n.setAttribute('opacity',1-t);n.setAttribute('stroke-width',(big?6:3)*(1-t)+1);});
+  const k=big?16:7;
+  for(let i=0;i<k;i++){const a=Math.random()*Math.PI*2,sp=(big?0.18:0.12)+Math.random()*(big?0.35:0.18);let px=x,py=y;
+    fxParticle(()=>el('circle',{cx:x,cy:y,r:2+Math.random()*(big?3:2),class:i%3?'fx-spark':'fx-spark2'},Lr),380+Math.random()*260,(n,t,dt)=>{px+=Math.cos(a)*sp*dt;py+=Math.sin(a)*sp*dt;n.setAttribute('cx',px);n.setAttribute('cy',py);n.setAttribute('opacity',1-t);});}
+  shake(big?7:3);
+}
+function dust(x,y,k,big){const Lr=$('g-fx');
+  for(let i=0;i<k;i++){const a=(i/k)*Math.PI*2+Math.random()*.4,sp=0.05+Math.random()*0.06;let px=x+Math.cos(a)*22,py=y+Math.sin(a)*14+10;
+    fxParticle(()=>el('circle',{cx:px,cy:py,r:4,class:'fx-dust'},Lr),520,(n,t,dt)=>{px+=Math.cos(a)*sp*dt;py+=Math.sin(a)*sp*dt*0.6;n.setAttribute('cx',px);n.setAttribute('cy',py);n.setAttribute('r',4+(big?10:6)*t);n.setAttribute('opacity',0.55*(1-t));});}
+  if(big)shake(4);}
+function aura(x,y){fxParticle(()=>el('circle',{cx:x,cy:y,r:28,class:'fx-aura'},$('g-fx')),600,(n,t)=>{n.setAttribute('r',28+26*t);n.setAttribute('opacity',1-t);});}
+function landFx(k,x,y){if(k==='dust')dust(x,y,6,false);else if(k==='dustB')dust(x,y,10,true);else if(k==='dustS')dust(x,y,4,false);else if(k==='aura')aura(x,y);}
+function knock(g,x,y,dx,dy,boom){// 被吃的棋子被打飛
+  const d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d,vr=(Math.random()<.5?-1:1)*(boom?1.0:0.55);
+  let vx=ux*(boom?0.55:0.38)+(Math.random()-.5)*0.15,vy=uy*(boom?0.55:0.38)-(boom?0.95:0.6),px=x,py=y,r=0;
+  explode(x,y,boom);
+  addTask({step(age,dt){dt=Math.min(dt,40);vy+=0.0028*dt;px+=vx*dt;py+=vy*dt;r+=vr*dt;
+    setPose(g,px,py,{rot:r,s:1+age*0.0007});g.setAttribute('opacity',Math.max(0,1-Math.max(0,age-260)/440));
+    if(age>700){g.remove();return false;}}});
+}
+function playMove(a){
+  const gen=animGen;
+  return new Promise(res=>{
+    const[c0,r0]=disp(a.from),[c1,r1]=disp(a.to),x0=X(c0),y0=Y(r0),x1=X(c1),y1=Y(r1);
+    const layer=$('g-anim');layer.innerHTML='';
+    let victim=null;if(a.q){victim=pieceNode($('g-fx'),a.q);setPose(victim,x1,y1,{});}
+    const sh=el('ellipse',{class:'fx-shadow',rx:24,ry:8,opacity:0},layer);
+    const g=pieceNode(layer,a.p,'pc '+(((a.p>>3)&1)?'b':'r')+' last');
+    const M=motion(a.p&7,x0,y0,x1,y1,!!a.q),ty=a.p&7,cap=!!a.q;
+    let hit=false,landed=false,done=false,tk=null,hop=false,snd=false;
+    startSnd(ty,M.dur);
+    const fire=()=>{if(victim&&!hit){hit=true;impactSnd(ty);knock(victim,x1,y1,x1-x0,y1-y0,(a.p&7)===C);}};
+    const finish=()=>{if(done)return;done=true;if(tk)tasks.delete(tk);if(gen===animGen){fire();layer.innerHTML='';}res();};
+    setPose(g,x0,y0,{});
+    tk=addTask({step(age){
+      const t=Math.min(1,age/M.dur),P=M.f(t),h=P.h||0;
+      setPose(g,P.x,P.y-h,P);
+      const k=Math.max(0.5,1-h/160);
+      sh.setAttribute('cx',P.x);sh.setAttribute('cy',P.y+10);sh.setAttribute('rx',24*k);sh.setAttribute('ry',8*k);sh.setAttribute('opacity',Math.min(0.45,h/45));
+      if(t>=M.impact)fire();
+      if(ty===N&&!hop&&t>=0.34){hop=true;sfx('clop',true);}
+      if(!snd&&(t>=M.land||t>=1)){snd=true;landSnd(ty,cap);}
+      if(!landed&&t>=M.land){landed=true;landFx(M.fx,x1,y1);}
+      if(t>=1){finish();return false;}}});
+    setTimeout(finish,M.dur+500);
+  });
+}
+
+$('board').addEventListener('click',e=>{
+  if(!G||G.status!=='playing'||thinking||anim||review!==null||G.side!==G.player)return;
+  const svg=$('board'),pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;
+  const p=pt.matrixTransform(svg.getScreenCTM().inverse());
+  const dc=Math.round((p.x-44)/64),dr=Math.round((p.y-60)/64);
+  if(dc<0||dc>8||dr<0||dr>9)return;
+  if(Math.hypot(p.x-X(dc),p.y-Y(dr))>34)return;
+  const c=flip()?8-dc:dc,r=flip()?9-dr:dr,sq=r*9+c,pc=G.board[sq];
+  const tm=targets.find(m=>(m>>7)===sq);
+  if(tm){commit(tm);return;}
+  if(pc&&((pc>>3)&1)===G.player){
+    if(sel===sq){sel=-1;targets=[];}
+    else{sel=sq;targets=E.legalMoves(G.board,G.player).filter(m=>(m&127)===sq);sfx('select');}
+  }else{sel=-1;targets=[];}
+  renderBoard();
+});
+
+/* ---- panels ---- */
+function sideName(s){return s?'黑':'紅';}
+function renderTurn(){
+  const t=$('turnbar');t.className='turnbar';
+  const round=Math.floor(G.moves.length/2)+1;
+  if(G.status==='over'){
+    const pw=(G.result==='red'&&G.player===0)||(G.result==='black'&&G.player===1);
+    const msg=G.result==='draw'?'和棋':pw?'你贏了':'你輸了';
+    t.classList.add(G.result==='draw'?'d':pw?'win':'lose');
+    t.innerHTML=`<span class="dot ${G.result==='red'?'r':G.result==='black'?'b':''}"></span><span>終局：${msg}（${G.reason}）</span><span class="end">共 ${G.moves.length} 手 · ${G.level} 級 ${LEVELS[G.level].name}</span>`;
+    return;}
+  const chk=E.inCheck(G.board,G.side);
+  if(thinking)t.innerHTML=`<span class="spin"></span><span>電腦（${sideName(G.side)}方，${G.level} 級）思考中…</span><span class="end">第 ${round} 回合</span>`;
+  else t.innerHTML=`<span class="dot ${G.side?'b':'r'}"></span><span>${G.side===G.player?'輪到你走':'等待電腦'}（${sideName(G.side)}方）${chk?'　<b style="color:var(--bla)">被將軍！</b>':''}</span><span class="end">第 ${round} 回合</span>`;
+}
+const playerMoved=()=>G&&G.moves.some((_,i)=>(i%2)===G.player);
+function pickSetting(){store.set('xq.prefs',prefs);if(G&&G.status==='playing')newGame();else renderRail();}
+function renderRail(){
+  const playing=G&&G.status==='playing'&&playerMoved();
+  const lv=$('levels');lv.innerHTML='';
+  for(let i=1;i<=5;i++){const b=document.createElement('button');b.className='lv';b.id='lv'+i;
+    b.setAttribute('aria-pressed',String(prefs.level===i));b.disabled=playing&&prefs.level!==i;
+    b.innerHTML=`<span class="n">${CNUM[i]}</span><span class="t">${LEVELS[i].name}</span>`;
+    b.onclick=()=>{if(playing||prefs.level===i)return;prefs.level=i;pickSetting();};lv.appendChild(b);}
+  $('lvdesc').textContent=`${prefs.level} 級 · ${LEVELS[prefs.level].desc}`;
+  for(const b of $('sidesel').querySelectorAll('button')){const s=+b.dataset.side;
+    b.setAttribute('aria-pressed',String(prefs.side===s));b.disabled=playing&&prefs.side!==s;
+    b.onclick=()=>{if(playing||prefs.side===s)return;prefs.side=s;pickSetting();};}
+  $('lock').hidden=!playing;
+  const rb=$('resignbtn');rb.disabled=!(G&&G.status==='playing');rb.textContent=resignArmed?'確定認輸？':'認輸';rb.classList.toggle('armed',!!resignArmed);
+  $('newbtn').textContent=playing?'重新開局':'開始新對局';
+}
+function renderMoves(){
+  const ol=$('moves');ol.innerHTML='';
+  $('movecount').textContent=G.moves.length?` · ${G.moves.length} 手`:'';
+  if(!G.moves.length){ol.innerHTML=`<li><span class="empty-moves">${G.player===0?'你執紅先走，點選棋子後再點落點。':'電腦執紅先走，請稍候。'}</span></li>`;return;}
+  const over=G.status==='over';
+  for(let i=0;i<G.moves.length;i+=2){
+    const li=document.createElement('li');
+    li.innerHTML=`<span class="no">${i/2+1}.</span>`;
+    for(const j of[i,i+1]){
+      if(j>=G.moves.length){li.insertAdjacentHTML('beforeend','<span></span>');continue;}
+      const b=document.createElement('button');
+      const A=G.analysis&&G.analysis[j],sv=A?sevOf(A.l):'';
+      b.className='mv '+(j%2?'b':'r')+(over?' click':'')+(review===j?' on':'');
+      b.innerHTML=`<span>${G.notes[j]}</span>${sv?`<span class="sev ${sv}">${SEV[sv].s}</span>`:''}`;
+      if(over)b.onclick=()=>setReview(j);else b.tabIndex=-1;
+      li.appendChild(b);}
+    ol.appendChild(li);}
+  if(!over)ol.scrollTop=ol.scrollHeight;
+  else{const on=ol.querySelector('.mv.on');if(on)on.scrollIntoView({block:'nearest'});}
+}
+function setReview(k){if(!G||G.status!=='over')return;review=k===null?null:Math.max(0,Math.min(G.moves.length,k));renderBoard();renderMoves();renderReviewBar();renderChartCursor();}
+function renderReviewBar(){
+  const bar=$('reviewbar');
+  if(G.status!=='over'){bar.hidden=true;return;}
+  bar.hidden=false;
+  const k=review===null?G.moves.length:review;
+  $('rv-prev').disabled=k<=0;$('rv-next').disabled=k>=G.moves.length;$('rv-end').disabled=review===null;
+  const txt=$('rv-txt');
+  if(review===null||review>=G.moves.length){txt.innerHTML=`終局局面。點棋譜或下方曲線的任一手，查看當時的走法。`;return;}
+  const i=review,A=G.analysis&&G.analysis[i],mine=(i%2)===G.player;
+  const pb=positionAt(i);
+  let h=`第 ${Math.floor(i/2)+1} 回合 · ${mine?'你':'電腦'}（${sideName(i%2)}）走 <span class="k">${G.notes[i]}</span>`;
+  if(A&&A.b&&A.b!==G.moves[i]){h+=`　建議 <span class="k">${notation(pb,A.b)}</span>`;}
+  if(A&&mine&&A.l!=null){const sv=sevOf(A.l);h+=sv?`　<span class="sev ${sv}">${SEV[sv].t} −${fmtLoss(A.l)}</span>`:'　<span style="color:var(--good)">好棋</span>';}
+  h+=`<br><span class="legend"><i style="background:var(--played)"></i>實戰</span>${A&&A.b&&A.b!==G.moves[i]?'<span class="legend"><i style="background:var(--best)"></i>建議</span>':''}`;
+  txt.innerHTML=h;
+}
+$('rv-prev').onclick=()=>{const k=review===null?G.moves.length:review;setReview(k-1);};
+$('rv-next').onclick=()=>{const k=review===null?G.moves.length:review;setReview(k+1>=G.moves.length?null:k+1);};
+$('rv-end').onclick=()=>setReview(null);
+document.addEventListener('keydown',e=>{if(!G||G.status!=='over'||/INPUT|TEXTAREA/.test(document.activeElement.tagName))return;
+  if(e.key==='ArrowLeft'){$('rv-prev').click();e.preventDefault();}if(e.key==='ArrowRight'){$('rv-next').click();e.preventDefault();}});
+
+const fmtLoss=l=>l>=1000?'1000+ 分':Math.round(l)+' 分';
+const clampS=s=>Math.abs(s)>MATE-1000?(s>0?1000:-1000):Math.max(-1000,Math.min(1000,s));
+function pv(i){const A=G.analysis[i];const v=(i%2)===G.player?A.s:-A.s;return clampS(v);}
+
+function updateProgress(){const bar=document.querySelector('#an-body .progress i');if(bar&&analyzing)bar.style.width=(100*analyzing.i/analyzing.n)+'%';
+  const t=$('an-prog-t');if(t&&analyzing)t.textContent=`正在逐手分析… ${analyzing.i} / ${analyzing.n}`;}
+function renderAnalysis(){
+  const body=$('an-body'),sub=$('an-sub');
+  if(analyzing&&analyzing.id===G.id){sub.textContent='';body.innerHTML=`<p class="placeholder" id="an-prog-t">正在逐手分析… 0 / ${analyzing.n}</p><div class="progress"><i></i></div>`;updateProgress();return;}
+  if(G.status!=='over'){sub.textContent='';
+    body.innerHTML=`<p class="placeholder">這局下完（將死、困斃、和棋或認輸）後，電腦會用固定的深度重新檢查你的每一手，把它和當時的最佳著法比較，算出損失多少分（100 分約等於一隻過河兵），並標出問題從哪一手開始。</p>`;return;}
+  if(!G.analysis){sub.textContent='';
+    body.innerHTML=G.moves.length<2?`<p class="placeholder">這局太短，沒有可分析的著法。</p>`:`<p class="placeholder">這局尚未分析。</p><div><button class="btn primary" id="an-run">開始分析</button></div>`;
+    const b=$('an-run');if(b)b.onclick=startAnalysis;return;}
+  const An=G.analysis,mine=[];
+  for(let i=0;i<G.moves.length;i++)if((i%2)===G.player&&An[i].l!=null)mine.push(i);
+  const cnt={ok:0,dub:0,mis:0,bla:0};
+  let acc=0;for(const i of mine){const s=sevOf(An[i].l)||'ok';cnt[s]++;acc+=100*Math.exp(-Math.min(An[i].l,2000)/300);}
+  acc=mine.length?Math.round(acc/mine.length):100;
+  const first=mine.find(i=>An[i].l>=100);
+  const worst=mine.reduce((w,i)=>w==null||An[i].l>An[w].l?i:w,null);
+  // turning point: last ply where player's eval was still >= -150, if the game ended clearly worse
+  const n=G.moves.length;let turn=null;
+  if(pv(n)<-150){let L=-1;for(let i=0;i<=n;i++)if(pv(i)>=-150)L=i;
+    if(L>=0&&L<n){let t=L;if((t%2)!==G.player)t=t-1;if(t>=0)turn=t;}}
+  sub.textContent=`你的準確度 ${acc}% · 分析深度 4–5 層`;
+  const rn=i=>Math.floor(i/2)+1;
+  let sum;
+  if(first==null)sum=`<p class="summary">這局沒有明顯失誤（每一手損失都低於 100 分）。${cnt.dub?`有 ${cnt.dub} 手疑問手可以下得更精確，點棋譜上黃色標記查看。`:'整體下得很穩。'}</p>`;
+  else{const pb=positionAt(first);
+    sum=`<p class="summary">問題從 <strong>第 ${rn(first)} 回合「${G.notes[first]}」</strong> 開始：這一手損失約 ${fmtLoss(An[first].l)}，當時較好的走法是「${notation(pb,An[first].b)}」。`;
+    if(turn!=null&&turn!==first)sum+=` 之後在第 ${rn(turn)} 回合「${G.notes[turn]}」以後局勢一路落後，沒能扳回。`;
+    else if(turn===first)sum+=` 從這一手之後局勢一路落後，沒能扳回。`;
+    if(worst!=null&&worst!==first&&An[worst].l>=100)sum+=` 全局損失最大的一手是第 ${rn(worst)} 回合「${G.notes[worst]}」（−${fmtLoss(An[worst].l)}）。`;
+    sum+='</p>';}
+  body.innerHTML=sum+`<div class="stats">
+    <span class="stat good">好棋 <b>${cnt.ok}</b></span><span class="stat dub">疑問手 ?! <b>${cnt.dub}</b></span>
+    <span class="stat mis">錯著 ? <b>${cnt.mis}</b></span><span class="stat bla">敗著 ?? <b>${cnt.bla}</b></span></div>
+    <div class="chartbox"><svg id="chart" viewBox="0 0 760 230" aria-label="形勢曲線"></svg></div>
+    <div class="moments" id="moments"></div>`;
+  drawChart();
+  const mo=$('moments');
+  const keyIdx=mine.filter(i=>An[i].l>=100);
+  const list=keyIdx.length?keyIdx:mine.filter(i=>An[i].l>=40);
+  if(!list.length){mo.innerHTML='<p class="placeholder">沒有需要特別檢討的一手。</p>';}
+  for(const i of list.slice(0,12)){
+    const sv=sevOf(An[i].l),pb=positionAt(i),after=positionAt(i+1);
+    let why='';const nx=An[i+1];
+    if(nx&&nx.b){const cap=after[nx.b>>7];if(cap)why=`這手之後，對方可走「${notation(after,nx.b)}」吃掉你的${NAME[(cap>>3)&1][cap&7]}。`;
+      else if(Math.abs(nx.s)>MATE-1000&&nx.s>0)why=`這手之後，對方有殺棋：「${notation(after,nx.b)}」。`;}
+    const b=document.createElement('button');b.className='moment '+sv+(i===first?' first':'');
+    b.innerHTML=`<span class="h">第 ${rn(i)} 回合 <span class="sev ${sv}">${SEV[sv].t}</span>${i===first?'<span style="color:var(--bla);font-weight:700">問題起點</span>':''}</span>
+      <span class="mvname">${G.notes[i]}</span><p>損失約 ${fmtLoss(An[i].l)}。建議改走「${notation(pb,An[i].b)}」。${why}</p>`;
+    b.onclick=()=>{setReview(i);$('board').scrollIntoView({behavior:'smooth',block:'center'});};
+    mo.appendChild(b);}
+}
+function drawChart(){
+  const svg=$('chart');if(!svg)return;svg.innerHTML='';
+  const n=G.moves.length,W=760,H=230,l=48,r=14,t=14,bt=30;
+  const x=i=>l+i*(W-l-r)/Math.max(1,n),y=v=>t+(1000-v)/2000*(H-t-bt);
+  for(const v of[1000,500,0,-500,-1000]){
+    el('line',{x1:l,x2:W-r,y1:y(v),y2:y(v),class:v===0?'zero':'grid'},svg);
+    el('text',{x:l-8,y:y(v)+4,'text-anchor':'end',class:'ax'},svg,v>0?'+'+v:String(v));}
+  el('text',{x:l+4,y:t+12,class:'ax'},svg,'你佔優');
+  el('text',{x:l+4,y:H-bt-6,class:'ax'},svg,'你落後');
+  const rounds=Math.ceil(n/2),step=rounds>40?10:rounds>16?5:2;
+  for(let rd=step;rd<=rounds;rd+=step){const i=(rd-1)*2;el('text',{x:x(i),y:H-10,'text-anchor':'middle',class:'ax'},svg,rd+'回');}
+  const pts=[];for(let i=0;i<=n;i++)pts.push([x(i),y(pv(i))]);
+  const line=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join('');
+  const area=line+`L${x(n)} ${y(0)}L${x(0)} ${y(0)}Z`;
+  const defs=el('defs',{},svg);
+  const cu=el('clipPath',{id:'cu'},defs);el('rect',{x:0,y:0,width:W,height:y(0)},cu);
+  const cd=el('clipPath',{id:'cd'},defs);el('rect',{x:0,y:y(0),width:W,height:H},cd);
+  el('path',{d:area,class:'a-up','clip-path':'url(#cu)'},svg);
+  el('path',{d:area,class:'a-dn','clip-path':'url(#cd)'},svg);
+  el('path',{d:line,class:'curve'},svg);
+  el('line',{id:'chart-cur',x1:0,x2:0,y1:t,y2:H-bt,class:'cursor',visibility:'hidden'},svg);
+  for(let i=0;i<n;i++){if((i%2)!==G.player)continue;const sv=sevOf(G.analysis[i].l);if(!sv)continue;
+    const c=el('circle',{cx:x(i+1),cy:y(pv(i+1)),r:sv==='dub'?5:7,class:'mk '+sv},svg);
+    el('title',{},c,`第 ${Math.floor(i/2)+1} 回合 ${G.notes[i]}：${SEV[sv].t}`);
+    c.addEventListener('click',()=>setReview(i));}
+  // click anywhere on chart to jump
+  svg.addEventListener('click',e=>{if(e.target.classList.contains('mk'))return;
+    const pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const p=pt.matrixTransform(svg.getScreenCTM().inverse());
+    const i=Math.round((p.x-l)/((W-l-r)/Math.max(1,n)));if(i>=0&&i<=n)setReview(i>=n?null:Math.max(0,i-1));});
+  renderChartCursor();
+}
+function renderChartCursor(){const c=$('chart-cur');if(!c)return;const n=G.moves.length;
+  if(review===null){c.setAttribute('visibility','hidden');return;}
+  const xx=48+(review+1)*(760-48-14)/Math.max(1,n);c.setAttribute('x1',xx);c.setAttribute('x2',xx);c.setAttribute('visibility','visible');}
+
+function renderHistory(){
+  const box=$('history');
+  if(!history.length){box.innerHTML='<p class="placeholder">還沒有完成的對局。下完一局就會出現在這裡，可隨時回來看覆盤。</p>';return;}
+  box.innerHTML='';const list=document.createElement('div');list.className='hist';
+  for(const h of history){
+    const pw=(h.result==='red'&&h.player===0)||(h.result==='black'&&h.player===1);
+    const res=h.result==='draw'?['d','和棋']:pw?['w','勝']:['l','負'];
+    const d=new Date(h.date);
+    const row=document.createElement('div');row.className='hrow'+(G&&G.id===h.id?' on':'');
+    let first='';if(h.analysis){const fi=h.moves.findIndex((_,i)=>(i%2)===h.player&&h.analysis[i]&&h.analysis[i].l>=100);first=fi<0?'無明顯失誤':`第 ${Math.floor(fi/2)+1} 回合起出問題`;}
+    row.innerHTML=`<div><span class="res ${res[0]}">${res[1]}</span>　${CNUM[h.level]}級 ${LEVELS[h.level].name} · 執${sideName(h.player)}<div class="d">${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}</div></div>
+      <div class="x2">${h.moves.length} 手 · ${h.reason}</div><div class="x2">${h.analysis?first:'未分析'}</div>`;
+    const b=document.createElement('button');b.className='btn';b.textContent=G&&G.id===h.id?'檢視中':'覆盤';
+    b.disabled=G&&G.id===h.id;
+    b.onclick=()=>openRecord(h);
+    row.appendChild(b);list.appendChild(row);}
+  box.appendChild(list);
+}
+function openRecord(h){
+  if(G&&G.status==='playing'&&G.moves.length>0){
+    // leaving an unfinished game counts as resign so moves can't be taken back
+    if(!confirmLeave())return;}
+  resetWorker();cancelAnim();thinking=false;analyzing=null;
+  G=Object.assign({},h);rebuild();review=null;sel=-1;targets=[];
+  save();renderAll();
+  if(!G.analysis&&G.moves.length>=2)startAnalysis();
+  $('board').scrollIntoView({behavior:'smooth',block:'start'});
+}
+let leaveArmed=false;
+function confirmLeave(){
+  if(!leaveArmed){leaveArmed=true;flash('目前對局尚未下完。再按一次「覆盤」會以認輸結束目前的對局。');setTimeout(()=>{leaveArmed=false;},4000);return false;}
+  leaveArmed=false;finish(G.player^1,'認輸');return true;}
+function flash(msg){const t=$('turnbar');t.innerHTML=`<span class="dot"></span><span style="color:var(--dub)">${msg}</span>`;setTimeout(renderTurn,4000);}
+
+let newArmed=false;
+$('newbtn').onclick=()=>{
+  if(G&&G.status==='playing'&&playerMoved()){
+    if(!newArmed){newArmed=true;$('newbtn').textContent='確定？本局記為認輸';setTimeout(()=>{newArmed=false;renderRail();},3000);return;}
+    newArmed=false;resetWorker();thinking=false;finish(G.player^1,'認輸');save();}
+  newGame();
+};
+$('resignbtn').onclick=resign;
+$('copybtn').onclick=()=>{
+  if(!G)return;let s=`楚河棋室　${CNUM[G.level]}級${LEVELS[G.level].name}　玩家執${sideName(G.player)}\n`;
+  for(let i=0;i<G.notes.length;i+=2)s+=`${i/2+1}. ${G.notes[i]}${G.notes[i+1]?'　'+G.notes[i+1]:''}\n`;
+  if(G.status==='over')s+=`結果：${G.result==='draw'?'和棋':G.result==='red'?'紅勝':'黑勝'}（${G.reason}）\n`;
+  const btn=$('copybtn');
+  const done=ok=>{btn.textContent=ok?'已複製':'複製失敗';setTimeout(()=>btn.textContent='複製棋譜',1800);};
+  try{navigator.clipboard.writeText(s).then(()=>done(true),()=>done(false));}catch(e){done(false);}
+};
+
+function renderAll(){drawStatic();renderBoard();renderTurn();renderRail();renderMoves();renderReviewBar();renderAnalysis();renderHistory();}
+
+/* ---- boot ---- */
+function start(data){
+  makeWorker();
+  const saved=(data&&data.cur)||store.get('xq.current',null);
+  if(saved&&saved.moves&&saved.start){G=Object.assign({},saved);rebuild();review=(data&&data.review!==undefined)?data.review:null;renderAll();
+    if(G.status==='over'&&!G.analysis&&G.moves.length>=2)startAnalysis();
+    maybeAI();}
+  else newGame();
+}
+window.claude?.hot?.snapshot?.(()=>({cur:serialize(G),review}));
+window.claude?.hot?.ready?window.claude.hot.ready(start):start(window.claude?.hot?.data??{});
+</script>
+</body>
+</html>
