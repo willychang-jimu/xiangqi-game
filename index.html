@@ -259,7 +259,7 @@ section.panel h2{font-family:var(--f-display);font-size:24px;margin:0;letter-spa
   </section>
 
   <section class="panel">
-    <div class="ph"><h2>對局紀錄</h2><span class="sub">保存在這台裝置的瀏覽器中，最近 30 局</span></div>
+    <div class="ph"><h2>對局紀錄</h2><span class="sub" id="sync-state">保存在這台裝置的瀏覽器中，最近 30 局</span></div>
     <div id="history"></div>
   </section>
 </div>
@@ -565,8 +565,8 @@ function rebuild(){
   for(const m of G.moves){const q=G.board[m>>7];G.notes.push(notation(G.board,m));E.make(G.board,m);G.side^=1;
     G.quiet=q?0:G.quiet+1;const key=G.board.join(',')+'|'+G.side;G.reps.set(key,(G.reps.get(key)||0)+1);}
 }
-function serialize(g){return g&&{id:g.id,date:g.date,level:g.level,player:g.player,start:g.start,moves:g.moves,status:g.status,result:g.result,reason:g.reason,analysis:g.analysis};}
-function save(){store.set('xq.current',serialize(G));}
+function serialize(g){return g&&{upd:g.upd||0,id:g.id,date:g.date,level:g.level,player:g.player,start:g.start,moves:g.moves,status:g.status,result:g.result,reason:g.reason,analysis:g.analysis};}
+function save(){if(G)G.upd=Date.now();store.set('xq.current',serialize(G));cloudSaveCurrent();}
 
 function commit(m){
   const from=m&127,to=m>>7,p=G.board[from],q=G.board[to];
@@ -588,7 +588,7 @@ function commit(m){
 }
 function finish(winner,reason){
   G.status='over';G.result=winner===-1?'draw':winner===0?'red':'black';G.reason=reason;
-  history=history.filter(h=>h.id!==G.id);history.unshift(serialize(G));history=history.slice(0,30);store.set('xq.history',history);
+  G.upd=Date.now();history=history.filter(h=>h.id!==G.id);history.unshift(serialize(G));history=history.slice(0,30);store.set('xq.history',history);cloudSaveGame(G);
   if(G.moves.length>=2)startAnalysis();
 }
 function maybeAI(){
@@ -616,7 +616,7 @@ function startAnalysis(){
   call({cmd:'analyze',start:g.start,moves:g.moves,player:g.player},(i,n)=>{if(analyzing&&analyzing.id===g.id){analyzing.i=i;analyzing.n=n;updateProgress();}})
   .then(r=>{if(!r||!r.res)return;g.analysis=r.res.map(e=>({b:e.b,s:e.s,p:e.p,l:e.l}));
     if(analyzing&&analyzing.id===g.id)analyzing=null;
-    const h=history.find(x=>x.id===g.id);if(h){h.analysis=g.analysis;store.set('xq.history',history);}
+    const h=history.find(x=>x.id===g.id);if(h){h.analysis=g.analysis;store.set('xq.history',history);cloudSaveGame(h);}
     if(G===g){save();renderAll();}});
 }
 
@@ -1144,6 +1144,68 @@ $('copybtn').onclick=()=>{
 
 function renderAll(){drawStatic();renderBoard();renderTurn();renderRail();renderMoves();renderReviewBar();renderAnalysis();renderHistory();}
 
+/* ---- cloud save: on claude.ai, keep each player's games in their own private database area ---- */
+const CLOUD={db:null,uid:null,ready:false,q:{},state:'local',started:false};
+const cloudPath=k=>`data/users/${CLOUD.uid}/${k}`;
+function setCloudState(s){CLOUD.state=s;const e=$('sync-state');if(!e)return;
+  e.textContent=s==='ok'?'已存到你的 claude.ai 帳號，重新整理或換裝置都不會消失；保留最近 30 局'
+    :s==='err'?'雲端儲存暫時失敗，先保存在這台裝置的瀏覽器中'
+    :s==='wait'?'正在讀取你保存的對局…':'保存在這台裝置的瀏覽器中，最近 30 局';}
+function cloudWrite(path,data){
+  if(!CLOUD.ready)return;
+  const q=CLOUD.q[path]||(CLOUD.q[path]={busy:false,next:null});
+  q.next=data;if(q.busy)return;
+  q.busy=true;
+  (async()=>{while(q.next){const d=q.next;q.next=null;
+      try{await CLOUD.db.doc(path).set(JSON.parse(JSON.stringify(d)));if(CLOUD.state!=='ok')setCloudState('ok');}
+      catch(e){if(e&&e.code==='unavailable'){await new Promise(r=>setTimeout(r,800+Math.random()*800));if(!q.next)q.next=d;}else setCloudState('err');}}
+    q.busy=false;})();
+}
+function cloudSaveCurrent(){if(G)cloudWrite(cloudPath('current'),serialize(G));}
+function cloudSaveGame(g){if(g)cloudWrite(cloudPath('games/'+g.id),serialize(g));}
+function adoptGame(rc){
+  resetWorker();cancelAnim();thinking=false;analyzing=null;
+  G=Object.assign({},rc);rebuild();review=null;sel=-1;targets=[];
+  store.set('xq.current',serialize(G));renderAll();
+  if(G.status==='over'&&!G.analysis&&G.moves.length>=2)startAnalysis();
+  maybeAI();
+}
+async function cloudInit(){
+  if(CLOUD.started)return;CLOUD.started=true;
+  const w=window.claude;if(!w||!w.use){setCloudState('local');return;}
+  setCloudState('wait');
+  let db=null,user=null;
+  try{[db,user]=await Promise.all([w.use('db'),w.use('user')]);}catch(e){}
+  if(!db||!user){setCloudState('local');return;}
+  let uid=null;try{uid=await user.id();}catch(e){}
+  if(!uid){setCloudState('local');return;}
+  CLOUD.db=db;CLOUD.uid=uid;
+  let timer;
+  const timeout=new Promise((_,rej)=>{timer=setTimeout(()=>rej(new Error('timeout')),10000);});
+  try{
+    const[cur,games]=await Promise.race([Promise.all([db.doc(cloudPath('current')).get(),db.collection(cloudPath('games')).get()]),timeout]);
+    clearTimeout(timer);CLOUD.ready=true;
+    // merge game archive (cloud + this browser), newest first, keep 30
+    const map=new Map();
+    for(const d of games.docs){const g=d.data();if(g&&g.id&&g.moves&&g.start)map.set(g.id,g);}
+    const remoteIds=new Set(map.keys());
+    for(const h of history){const r=map.get(h.id);if(!r||(!r.analysis&&h.analysis))map.set(h.id,h);}
+    const all=[...map.values()].sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    history=all.slice(0,30);store.set('xq.history',history);
+    for(const h of history)if(!remoteIds.has(h.id)||!(games.docs.find(d=>d.id===h.id)?.data()?.analysis)&&h.analysis)cloudSaveGame(h);
+    for(const h of all.slice(30))if(remoteIds.has(h.id))db.doc(cloudPath('games/'+h.id)).delete().catch(()=>{});
+    // current game: newer one wins; an untouched fresh board always yields to a saved game
+    const rc=cur.exists?cur.data():null;
+    if(rc&&rc.moves&&rc.start){
+      const same=G&&rc.id===G.id&&rc.moves.length===G.moves.length&&rc.status===G.status;
+      const localFresh=!G||(G.status==='playing'&&!playerMoved());
+      if(!same&&(localFresh||(rc.upd||0)>(G.upd||0)))adoptGame(rc);
+      else if(!same)cloudSaveCurrent();
+    }else if(G&&G.moves.length)cloudSaveCurrent();
+    setCloudState('ok');renderHistory();
+  }catch(e){clearTimeout(timer);CLOUD.ready=false;setCloudState('err');}
+}
+
 /* ---- boot ---- */
 function start(data){
   makeWorker();
@@ -1152,6 +1214,7 @@ function start(data){
     if(G.status==='over'&&!G.analysis&&G.moves.length>=2)startAnalysis();
     maybeAI();}
   else newGame();
+  cloudInit();
 }
 window.claude?.hot?.snapshot?.(()=>({cur:serialize(G),review}));
 window.claude?.hot?.ready?window.claude.hot.ready(start):start(window.claude?.hot?.data??{});
